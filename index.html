@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16130f">
+<title>Voice Lines</title>
+<style>
+  :root {
+    --bg: #16130f; --panel: #221d17; --btn: #2d261e; --btn-hi: #3a3127;
+    --ink: #efe6d8; --muted: #a3957f; --play: #7fb069; --danger: #c4553d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body { min-height: 100vh; padding: 16px 16px 112px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  h1 { font-size: 1.25rem; margin: 0; letter-spacing: .02em; }
+  #status { color: var(--muted); font-size: .9rem; margin: 0 0 16px; min-height: 1.2em; }
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .clip {
+    position: relative; min-height: 88px; padding: 14px;
+    border: 2px solid transparent; border-radius: 14px;
+    background: var(--btn); color: var(--ink);
+    font: inherit; font-size: 1.05rem; font-weight: 600; line-height: 1.25; text-align: left;
+    cursor: pointer; overflow: hidden; touch-action: manipulation; user-select: none;
+  }
+  .clip:active { background: var(--btn-hi); }
+  .clip.loading { opacity: .45; }
+  .clip.error { border-color: var(--danger); opacity: .7; }
+  .clip.playing { border-color: var(--play); background: var(--btn-hi); }
+  .clip .bar { position: absolute; left: 0; bottom: 0; height: 5px; width: 0; background: var(--play); }
+  #refresh {
+    border: 0; border-radius: 10px; background: var(--panel); color: var(--muted);
+    font: inherit; padding: 8px 14px; cursor: pointer;
+  }
+  #stop {
+    position: fixed; left: 16px; right: 16px; bottom: 16px; padding: 20px;
+    border: 0; border-radius: 16px; background: var(--danger); color: #fff;
+    font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer;
+    touch-action: manipulation; opacity: .3; transition: opacity .15s;
+  }
+  #stop.active { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Voice Lines</h1>
+  <button id="refresh" type="button">↻ Reload</button>
+</header>
+<p id="status">Loading clips…</p>
+<div id="grid"></div>
+<button id="stop" type="button">■ Stop</button>
+
+<script>
+// ---- Settings -------------------------------------------------------------
+// On github.io the owner and repo are detected automatically from the URL.
+// Fill these in only if detection gets it wrong (e.g. a custom domain).
+const CONFIG = {
+  owner: "",       // your GitHub username
+  repo: "",        // the repository name
+  branch: "",      // leave empty to use the repo's default branch
+  folder: "clips", // folder (next to index.html) holding the audio files
+};
+// ---------------------------------------------------------------------------
+
+const AUDIO_EXT = /\.(mp3|m4a|ogg|wav)$/i;
+const grid = document.getElementById("grid");
+const statusEl = document.getElementById("status");
+const stopBtn = document.getElementById("stop");
+
+// Web Audio plays clips without taking over the device's audio focus the way
+// a regular <audio> player can, so background music apps keep playing.
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+let current = null; // { src, btn, start, duration }
+
+function detectRepo() {
+  if (CONFIG.owner && CONFIG.repo) return { owner: CONFIG.owner, repo: CONFIG.repo };
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/i);
+  if (!m) return null;
+  const owner = m[1];
+  const first = location.pathname.split("/").filter(Boolean)[0];
+  const repo = first && !first.includes(".") ? first : `${owner}.github.io`;
+  return { owner, repo };
+}
+
+async function listFiles() {
+  const r = detectRepo();
+  if (r) {
+    const ref = CONFIG.branch ? `?ref=${encodeURIComponent(CONFIG.branch)}` : "";
+    const url = `https://api.github.com/repos/${r.owner}/${r.repo}/contents/${CONFIG.folder}${ref}`;
+    const res = await fetch(url, { headers: { Accept: "application/vnd.github+json" } });
+    if (res.status === 404) throw new Error(`No "${CONFIG.folder}" folder found in ${r.owner}/${r.repo}.`);
+    if (res.status === 403) throw new Error("GitHub's request limit was hit. Wait a few minutes and reload.");
+    if (!res.ok) throw new Error(`GitHub API error ${res.status}.`);
+    const items = await res.json();
+    return items.filter(i => i.type === "file" && AUDIO_EXT.test(i.name)).map(i => i.name);
+  }
+  // Not on github.io: fall back to an optional clips/list.json (["a.mp3", ...]).
+  const res = await fetch(`${CONFIG.folder}/list.json`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Can't list clips here. Open the page from its github.io address.");
+  return res.json();
+}
+
+// "03_The Innkeeper.mp3" -> label "The Innkeeper", sorted 3rd.
+// Without a number prefix, clips are sorted alphabetically.
+function parseName(file) {
+  const base = file.replace(AUDIO_EXT, "");
+  const m = base.match(/^(\d+)[\s._-]+(.+)$/);
+  return {
+    file,
+    label: (m ? m[2] : base).replace(/_/g, " ").trim(),
+    order: m ? parseInt(m[1], 10) : Infinity,
+  };
+}
+
+function clearCurrent() {
+  if (!current) return;
+  current.btn.classList.remove("playing");
+  current.btn.querySelector(".bar").style.width = "0";
+  current = null;
+  stopBtn.classList.remove("active");
+}
+
+function stop() {
+  if (!current) return;
+  const e = current;
+  clearCurrent();
+  try { e.src.stop(); } catch (_) {}
+}
+
+function tick() {
+  if (!current) return;
+  const p = Math.min(1, (ctx.currentTime - current.start) / current.duration);
+  current.btn.querySelector(".bar").style.width = (p * 100) + "%";
+  requestAnimationFrame(tick);
+}
+
+async function play(btn) {
+  if (ctx.state !== "running") await ctx.resume();
+  if (!btn._buffer) return;
+  if (current && current.btn === btn) { stop(); return; } // tap again to stop
+  stop();
+  const src = ctx.createBufferSource();
+  src.buffer = btn._buffer;
+  src.connect(ctx.destination);
+  const entry = { src, btn, start: ctx.currentTime, duration: btn._buffer.duration };
+  src.onended = () => { if (current === entry) clearCurrent(); };
+  src.start();
+  current = entry;
+  btn.classList.add("playing");
+  stopBtn.classList.add("active");
+  tick();
+}
+
+async function loadBuffer(btn, file) {
+  try {
+    const res = await fetch(`${CONFIG.folder}/${encodeURIComponent(file)}`);
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.arrayBuffer();
+    btn._buffer = await new Promise((ok, fail) => ctx.decodeAudioData(data, ok, fail));
+    btn.classList.remove("loading");
+  } catch (err) {
+    btn.classList.remove("loading");
+    btn.classList.add("error");
+    btn.title = "Couldn't load this file";
+  }
+}
+
+async function load() {
+  stop();
+  grid.innerHTML = "";
+  statusEl.textContent = "Loading clips…";
+  try {
+    const clips = (await listFiles()).map(parseName)
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, undefined, { numeric: true }));
+    if (!clips.length) {
+      statusEl.textContent = `No audio files in "${CONFIG.folder}" yet.`;
+      return;
+    }
+    const jobs = clips.map(c => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "clip loading";
+      btn.textContent = c.label;
+      const bar = document.createElement("span");
+      bar.className = "bar";
+      btn.appendChild(bar);
+      btn.addEventListener("click", () => play(btn));
+      grid.appendChild(btn);
+      return loadBuffer(btn, c.file);
+    });
+    await Promise.all(jobs);
+    const failed = grid.querySelectorAll(".clip.error").length;
+    statusEl.textContent = failed
+      ? `${clips.length - failed} of ${clips.length} clips ready. Red ones failed to load.`
+      : `${clips.length} clips ready.`;
+  } catch (err) {
+    statusEl.textContent = err.message;
+  }
+}
+
+stopBtn.addEventListener("click", stop);
+document.getElementById("refresh").addEventListener("click", load);
+load();
+</script>
+</body>
+</html>
