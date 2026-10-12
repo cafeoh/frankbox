@@ -3,57 +3,136 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#16130f">
-<title>Voice Lines</title>
+<meta name="theme-color" content="#1a0705">
+<title>La Frankbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #16130f; --panel: #221d17; --btn: #2d261e; --btn-hi: #3a3127;
-    --ink: #efe6d8; --muted: #a3957f; --play: #7fb069; --danger: #c4553d;
+    /* Width of the artwork column: full width on phones, capped on tablets. */
+    --w: min(100vw, 640px);
+    --ink: #fbe9cf;
+    --ember: #ffb347;
+    --fire: #ff5a1f;
   }
   * { box-sizing: border-box; }
+  html { background: #1a0705; }
   html, body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; color: var(--ink);
+    font-family: "Alegreya Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
-  body { min-height: 100vh; padding: 16px 16px 112px; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-  h1 { font-size: 1.25rem; margin: 0; letter-spacing: .02em; }
-  #status { color: var(--muted); font-size: .9rem; margin: 0 0 16px; min-height: 1.2em; }
-  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
-  .clip {
-    position: relative; min-height: 88px; padding: 14px;
-    border: 2px solid transparent; border-radius: 14px;
-    background: var(--btn); color: var(--ink);
-    font: inherit; font-size: 1.05rem; font-weight: 600; line-height: 1.25; text-align: left;
-    cursor: pointer; overflow: hidden; touch-action: manipulation; user-select: none;
+  body { min-height: 100vh; }
+
+  /* ---- Background ------------------------------------------------------
+     The artwork is shown at full width from the top so the painted title is
+     never cropped. A blurred, darkened copy fills whatever space is left
+     around it (below on phones, on the sides on tablets). */
+  .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: #1a0705; }
+  .bg-blur {
+    position: absolute; inset: -40px;
+    background: url("background.jpg") center / cover no-repeat;
+    filter: blur(20px) brightness(.55) saturate(1.2);
   }
-  .clip:active { background: var(--btn-hi); }
-  .clip.loading { opacity: .45; }
-  .clip.error { border-color: var(--danger); opacity: .7; }
-  .clip.playing { border-color: var(--play); background: var(--btn-hi); }
-  .clip .bar { position: absolute; left: 0; bottom: 0; height: 5px; width: 0; background: var(--play); }
+  .bg-art {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: var(--w); aspect-ratio: 1086 / 1448;
+    background: url("background.jpg") top center / 100% auto no-repeat;
+    -webkit-mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
+  }
+  /* Darken gently below the title so the buttons have something calmer to sit on. */
+  .bg::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(to bottom,
+      transparent 0,
+      transparent calc(var(--w) * .37),
+      rgba(12, 3, 2, .25) calc(var(--w) * .55),
+      rgba(12, 3, 2, .45) 100%);
+  }
+
+  /* ---- Layout ---------------------------------------------------------- */
+  main {
+    width: var(--w); margin: 0 auto;
+    padding: 0 14px calc(96px + env(safe-area-inset-bottom));
+  }
+  .title-gap { height: calc(var(--w) * .37); margin: 0; } /* keeps "La Frankbox" clear */
+
+  #status {
+    margin: 0 auto 12px; width: fit-content; max-width: 100%;
+    padding: 6px 14px; border-radius: 999px;
+    background: rgba(15, 4, 2, .7); color: #f3d9b4;
+    font-size: .95rem; font-weight: 700; text-align: center;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  #status[hidden] { display: none; }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+
+  /* ---- Buttons: smoked glass so the art shows through but text stays crisp */
+  .clip {
+    position: relative; min-height: 72px; padding: 12px 14px;
+    border: 1px solid rgba(255, 190, 110, .28); border-radius: 12px;
+    background: rgba(18, 6, 4, .55);
+    -webkit-backdrop-filter: blur(8px) saturate(1.3); backdrop-filter: blur(8px) saturate(1.3);
+    box-shadow: inset 0 1px 0 rgba(255, 220, 160, .12), 0 4px 14px rgba(0, 0, 0, .35);
+    color: var(--ink); text-shadow: 0 1px 2px rgba(0, 0, 0, .85);
+    font: inherit; font-size: 1.1rem; font-weight: 800; line-height: 1.15; text-align: left;
+    cursor: pointer; overflow: hidden; touch-action: manipulation; user-select: none;
+    transition: transform .08s, background-color .15s, box-shadow .15s, border-color .15s;
+  }
+  .clip:active { transform: scale(.97); background: rgba(60, 18, 8, .65); }
+  .clip.loading { opacity: .5; }
+  .clip.error { border-color: #e0533a; opacity: .7; }
+  .clip.playing {
+    border-color: var(--ember); background: rgba(70, 20, 6, .62);
+    box-shadow: 0 0 0 1px var(--ember), 0 0 20px rgba(255, 110, 30, .55);
+  }
+  .clip .bar {
+    position: absolute; left: 0; bottom: 0; height: 4px; width: 0;
+    background: linear-gradient(90deg, var(--fire), #ffc04d);
+  }
+
+  /* ---- Bottom control bar: reload + stop ------------------------------- */
+  .controls {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: calc(var(--w) - 28px); display: flex; gap: 10px;
+  }
   #refresh {
-    border: 0; border-radius: 10px; background: var(--panel); color: var(--muted);
-    font: inherit; padding: 8px 14px; cursor: pointer;
+    flex: none; width: 60px; height: 60px; border-radius: 14px;
+    border: 1px solid rgba(255, 190, 110, .3);
+    background: rgba(15, 4, 2, .6); color: #f3d9b4;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    font-size: 1.5rem; line-height: 1; cursor: pointer; touch-action: manipulation;
   }
   #stop {
-    position: fixed; left: 16px; right: 16px; bottom: 16px; padding: 20px;
-    border: 0; border-radius: 16px; background: var(--danger); color: #fff;
-    font: inherit; font-size: 1.2rem; font-weight: 700; cursor: pointer;
-    touch-action: manipulation; opacity: .3; transition: opacity .15s;
+    flex: 1; height: 60px;
+    border: 1px solid rgba(255, 170, 120, .35); border-radius: 14px;
+    background: rgba(150, 25, 15, .8); color: #fff;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    font: inherit; font-size: 1.25rem; font-weight: 800; letter-spacing: .04em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+    cursor: pointer; touch-action: manipulation;
+    opacity: .4; transition: opacity .15s;
   }
   #stop.active { opacity: 1; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Voice Lines</h1>
-  <button id="refresh" type="button">↻ Reload</button>
-</header>
-<p id="status">Loading clips…</p>
-<div id="grid"></div>
-<button id="stop" type="button">■ Stop</button>
+<div class="bg" aria-hidden="true"><div class="bg-blur"></div><div class="bg-art"></div></div>
+
+<main>
+  <h1 class="title-gap" aria-label="La Frankbox"></h1>
+  <p id="status">Loading clips…</p>
+  <div id="grid"></div>
+</main>
+
+<div class="controls">
+  <button id="refresh" type="button" aria-label="Reload clips">↻</button>
+  <button id="stop" type="button">■ STOP</button>
+</div>
 
 <script>
 // ---- Settings -------------------------------------------------------------
@@ -76,6 +155,11 @@ const stopBtn = document.getElementById("stop");
 // a regular <audio> player can, so background music apps keep playing.
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
 let current = null; // { src, btn, start, duration }
+
+function setStatus(text) {
+  statusEl.textContent = text;
+  statusEl.hidden = !text;
+}
 
 function detectRepo() {
   if (CONFIG.owner && CONFIG.repo) return { owner: CONFIG.owner, repo: CONFIG.repo };
@@ -173,12 +257,12 @@ async function loadBuffer(btn, file) {
 async function load() {
   stop();
   grid.innerHTML = "";
-  statusEl.textContent = "Loading clips…";
+  setStatus("Loading clips…");
   try {
     const clips = (await listFiles()).map(parseName)
       .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, undefined, { numeric: true }));
     if (!clips.length) {
-      statusEl.textContent = `No audio files in "${CONFIG.folder}" yet.`;
+      setStatus(`No audio files in "${CONFIG.folder}" yet.`);
       return;
     }
     const jobs = clips.map(c => {
@@ -195,11 +279,9 @@ async function load() {
     });
     await Promise.all(jobs);
     const failed = grid.querySelectorAll(".clip.error").length;
-    statusEl.textContent = failed
-      ? `${clips.length - failed} of ${clips.length} clips ready. Red ones failed to load.`
-      : `${clips.length} clips ready.`;
+    setStatus(failed ? `${failed} clip(s) failed to load (outlined in red).` : "");
   } catch (err) {
-    statusEl.textContent = err.message;
+    setStatus(err.message);
   }
 }
 
